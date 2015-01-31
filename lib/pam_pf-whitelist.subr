@@ -128,3 +128,21 @@ check_last_user_session_closed () {
 
   return 0
 }
+
+### REGULAR ANCHOR FUNCTIONS
+
+# create the table inside the anchor that holds the
+# destination addresses for the ssh connections
+create_ra_ssh_host_table_if_not_exists () {
+  if pfctl -a "${anchor}" -s Tables 2>/dev/null |\
+    grep 'pam_pf_sshd' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if ! check_tbldef_ssh_host_file_permission; then
+    return 1
+  fi
+
+  pfctl -a "${anchor}" -T load -f "${tbldef_pam_pf_ssh_host}"
+  return 0
+}
