@@ -77,10 +77,10 @@ check_file_permission () {
   return 0
 }
 
-# check file permissions for the ssh host table definition
-# file
-check_tbldef_ssh_host_file_permission () {
-  if ! check_file_permission "${tbldef_ssh_host}"; then
+# check file permissions for the file that contains
+# the sshd addresses to be loaded
+check_sshd_addr_file_permission () {
+  if ! check_file_permission "${sshd_addr_file}"; then
     return 1
   fi
 
