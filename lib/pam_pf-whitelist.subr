@@ -181,3 +181,23 @@ add_source_to_user_table () {
 
   return 0
 }
+
+# load the addresses listed in the $sshd_addr_file into
+# the pam_pf_ssh table inside the anchor
+load_entries_to_ssh_table () {
+  local _addr
+
+  if ! check_file_permission "${sshd_addr_file}"; then
+    return 1
+  fi
+
+  while read _addr; do
+    # skip comments
+    case $_addr in \#*) continue ;; esac
+
+    pfctl -q -a "${anchor}" -t 'pam_pf_ssh' \
+      -T add "${_addr}"
+  done < "${sshd_addr_file}"
+
+  return 0
+}
