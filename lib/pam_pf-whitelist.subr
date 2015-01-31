@@ -23,3 +23,18 @@ check_terminal () {
 
   return 0
 }
+
+# check in which PAM_SERVICE context we are called
+check_pam_service () {
+  local _svc = $1
+
+  if [ -z "${_svc}" -o -z "${PAM_SERVICE}" ]; then
+    return 1
+  fi
+
+  if [ "${PAM_SERVICE}" != "${_svc}" ]; then
+    return 1
+  fi
+
+  return 0
+}
