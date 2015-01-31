@@ -201,3 +201,8 @@ load_entries_to_ssh_table () {
 
   return 0
 }
+
+#
+flush_regular_anchor_of_user () {
+  pfctl -a "${anchor}" -F all >/dev/null 2>&1
+}
