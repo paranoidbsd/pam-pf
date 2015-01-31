@@ -149,6 +149,11 @@ check_last_user_session_closed () {
   return 0
 }
 
+# Kill states that match the label
+kill_labeled_states_of_user () {
+  pfctl -k 'label' -k "${label}"
+}
+
 ### REGULAR ANCHOR FUNCTIONS
 
 # load the ruleset for this user into the anchor
