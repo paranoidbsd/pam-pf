@@ -106,3 +106,25 @@ check_if_user_is_whitelisted () {
 
   return 0
 }
+
+# check if this was the last logged in session from $PAM_USER.
+# Only consider pts pseudo terminals for now
+check_last_user_session_closed () {
+  local _count
+
+  if [ -z "${PAM_USER}" ]; then
+    return 1
+  fi
+
+  _count=`w -h -n |\
+    grep -E '\bpts/[[:digit:]]{1,}\b' 2>/dev/null |\
+    grep -E -c "^${PAM_USER}"'\b'`
+
+  # if $_count is unset, be defensive and consider all sessions
+  # closed
+  if [ $_count:-0} -gt 0 ]; then
+    return 1
+  fi
+
+  return 0
+}
