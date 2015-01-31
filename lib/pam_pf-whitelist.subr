@@ -182,3 +182,22 @@ create_ra_user_host_table_if_not_exists () {
   pfctl -a "${anchor}" -T load -f "${tbldef_pam_pf_user_host}"
   return 0
 }
+
+# load the ruleset for this user into the anchor
+load_regular_anchor_ruleset () {
+
+  pfctl -q -a "${anchor}" -f - >/dev/null 2>&1 <<EOF
+table <pam_pf_user> persist counters
+table <pam_pf_ssh>  persist counters
+block in from <pam_pf_user> tag pam_pf
+pass in quick proto tcp from <pam_pf_user> to <pam_pf_ssh> \
+  port 22 label ${label} flags S/SA modulate state
+anchor extended
+EOF
+
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+
+  return 0
+}
