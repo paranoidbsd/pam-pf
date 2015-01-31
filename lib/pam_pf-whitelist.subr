@@ -14,3 +14,12 @@ check_uid () {
 
   return 0
 }
+
+# check if we are connected to a terminal
+check_terminal () {
+  if [ -t 0 -o -p /dev/stdin ]; then
+    return 1
+  fi
+
+  return 0
+}
