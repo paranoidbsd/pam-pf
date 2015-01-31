@@ -211,3 +211,10 @@ load_entries_to_ssh_table () {
 flush_regular_anchor_of_user () {
   pfctl -a "${anchor}" -F all >/dev/null 2>&1
 }
+
+### EXTENDED ANCHOR FUNCTIONS
+
+#
+flush_extended_anchor_of_user () {
+  pfctl -a "${extended}" -F all >/dev/null 2>&1
+}
