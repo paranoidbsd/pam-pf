@@ -76,3 +76,33 @@ check_file_permission () {
 
   return 0
 }
+
+# Check if the username is on the list of users which should
+# be processed. To be valid, the username has to be in the
+# file on a line of its own with no additional whitespace
+# exactly once
+check_if_user_is_whitelisted () {
+  local _wl=$1
+  local _count _ec
+
+  _wl=`realpath "${_wl}" 2>/dev/null`
+  if [ -z "${_wl}" ]; then
+    return 1
+  fi
+
+  if ! check_file_permission "${_wl}"; then
+    return 1
+  fi
+
+  if [ -z "${PAM_USER}" ]; then
+    return 1
+  fi
+
+  _count=`grep -c "^${PAM_USER}$" "${_wl}"`
+  _ec=$?
+  if [ ${_ec:-1} -ne 0 -o ${_count:-0} -ne 1 ]; then
+    return 1
+  fi
+
+  return 0
+}
