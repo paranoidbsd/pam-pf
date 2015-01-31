@@ -169,3 +169,15 @@ EOF
 
   return 0
 }
+
+# add ssh connection source to table inside anchor
+add_source_to_user_table () {
+  pfctl -q -a "${anchor}" -t 'pam_pf_user' \
+    -T add "${PAM_RHOST}"
+
+  if [ $? -ne 0 ]; then
+    return 1
+  fi
+
+  return 0
+}
