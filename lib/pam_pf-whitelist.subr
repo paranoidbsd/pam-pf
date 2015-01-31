@@ -87,6 +87,16 @@ check_tbldef_ssh_host_file_permission () {
   return 0
 }
 
+# check file permissions for the user host table definition
+# file
+check_tbldef_user_host_file_permission () {
+  if ! check_file_permission "${tbldef_user_host}"; then
+    return 1
+  fi
+
+  return 0
+}
+
 # Check if the username is on the list of users which should
 # be processed. To be valid, the username has to be in the
 # file on a line of its own with no additional whitespace
