@@ -38,3 +38,41 @@ check_pam_service () {
 
   return 0
 }
+
+# check file permissions. To pass, the supplied path must exist, be
+# a reguular file, not a symlink, be readable, belong to user root
+# and group wheel and have 0600 permissions
+check_file_permission () {
+  local _f=$1
+  _f=`realpath "${_file}" 2>/dev/null`
+
+  if [ -z "${_f}" ]; then
+    return 1
+  fi
+
+  if [ -L "${_f}" ]; then
+    return 1
+  fi
+
+  if [ ! -f "${_f}" ]; then
+    return 1
+  fi
+
+  if [ ! -r "${_f}" ]; then
+    return 1
+  fi
+
+  if [ `stat -f %Su "${_f}"` != 'root' ]; then
+    return 1
+  fi
+
+  if [ `stat -f %Sg "${_f}"` != 'wheel' ]; then
+    return 1
+  fi
+
+  if [ `stat -f %Sp "${_p}"` != '-rw-------' ]; then
+    return 1
+  fi
+
+  return 0
+}
