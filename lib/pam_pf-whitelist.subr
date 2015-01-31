@@ -1,0 +1,16 @@
+#!/bin/sh -
+
+# check if we run with the specified uid
+check_uid () {
+  local _uid = $1
+
+  if [ -z "${_uid}" ]; then
+    return 1
+  fi
+
+  if [ `id -u` -ne ${_uid} ]; then
+    return 1
+  fi
+
+  return 0
+}
