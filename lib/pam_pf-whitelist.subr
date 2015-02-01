@@ -178,6 +178,20 @@ kill_labeled_states_of_user () {
 
 ### REGULAR ANCHOR FUNCTIONS
 
+# Test whether the regular anchor for this user exists
+# Sadly pfctl does an exit 0 if the anchor does not exist
+check_if_regular anchor_for_user_exists () {
+  local _msg
+
+  _msg='pfctl: Anchor or Ruleset does not exist.'
+  if pfctl -a "${anchor}" -s Tables 2>&1 |\
+    grep -E "^${_msg}$" >/dev/null 2>&1; then
+    return 1
+  else
+    return 0
+  fi
+}
+
 # load the ruleset for this user into the anchor
 load_regular_anchor_ruleset () {
 
