@@ -71,6 +71,7 @@ pam_pf/
 ```
 
 Every user's base anchor is populated with the following:
+
 1. a table containing the users source addresses, `<pam_pf_user>`
 2. a conditional anchor statement for the regular subanchor
 3. a conditional anchor statement for the extended subanchor
@@ -141,6 +142,7 @@ etc/pam_pf.conf
 
 The main configuration file of `pam_pf`. It is shell syntax and
 provides three variables:
+
 1. `uid`, the uid under which this is expected to run. If your PAM
    system runs as anything other than 0, I'd be concerned but maybe
    you are not. Default: 0
@@ -207,6 +209,7 @@ fail session setup on `pam_pf` errors.
 
 For this to work, your system needs to provide a `pam_exec` module.
 This module also needs to set the following environment variables:
+
 1. PAM_USER
 2. PAM_SERVICE
 3. PAM_RHOST
