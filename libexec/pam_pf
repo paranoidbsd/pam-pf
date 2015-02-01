@@ -53,6 +53,7 @@ anc=`printf '%s' "pam_pf/${user}"`
 reg_anc=`printf '%s' "pam_pf/${user}/regular"`
 ext_anc=`printf '%s' "pam_pf/${user}/extended"`
 ext_rlf="${base}/etc/pam_pf/rules.d/${user}.rules"
+rlf_pfx="${base}/etc/pam_pf/rules.d/"
 reg_rlf="${base}/etc/pam_pf/regular.rules"
 label="pam_pf:${user}"
 ssh_adf="${base}/etc/pam_pf/sshd_addr.conf"
@@ -131,6 +132,10 @@ case ${PAM_SM_FUNC:-invalid} in
     fi
 
     if [ -e "${ext_rlf}" ]; then
+      if ! chk_escape "${rlf_pfx}" "${ext_rlf}"; then
+        exit EX_ERROR
+      fi
+
       if ! chk_file_perm "${ext_rlf}"; then
         exit EX_ERROR
       fi
@@ -181,6 +186,10 @@ case ${PAM_SM_FUNC:-invalid} in
     # no abort on error from here on out, to clean up as
     # much as possible
     if [ -e "${ext_rlf}" ]; then
+      if ! chk_escape "${rlf_pfx}" "${ext_rlf}"; then
+        #log
+      fi
+
       if ! chk_file_perm "${ext_rlf}"; then
         # log
       fi

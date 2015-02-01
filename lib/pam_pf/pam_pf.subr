@@ -176,6 +176,29 @@ chk_anchor () {
   return 0
 }
 
+# Check if the filesystem path in which a file should be is still
+# a prefix of that file after realpath fully resolved it.
+chk_escape () {
+  local _p=$1
+  local _f=$2
+  if [ -z "${_p}" -o -z "${_f}" ]; then
+    return 1
+  fi
+
+  _p=`realpath "${_p}" 2>/dev/null`
+  _f=`realpath "${_p}" 2>/dev/null`
+  if [ -z "${_p}" -o -z "${_f}" ]; then
+    return 1
+  fi
+
+  case "${_f}" in
+    "${_p}"*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
 # load the embedded ruleset for this user into the anchor
 load_rules () {
   local _a=$1
