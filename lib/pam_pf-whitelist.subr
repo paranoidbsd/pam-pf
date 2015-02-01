@@ -237,6 +237,11 @@ flush_regular_anchor_of_user () {
 ### EXTENDED ANCHOR FUNCTIONS
 
 #
+load_extended_anchor_ruleset () {
+  pfctl -a "${extended}" -f "${extended_rules}" >/dev/null 2>&1
+}
+
+#
 flush_extended_anchor_of_user () {
   pfctl -a "${extended}" -F all >/dev/null 2>&1
 }
