@@ -1,0 +1,204 @@
+#!/bin/sh -
+# Copyright (c) 2015, Joerg Pernfuss <code+github@paranoidbsd.net>
+# All rights reserved
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted providing that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+# OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+# IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+
+EX_OK=0
+EX_ERROR=1
+
+# if these variables are not set, we can not do anything
+if [ -z "${PAM_USER}" \
+  -o -z "${PAM_RHOST}" \
+  -o -z "${PAM_SERVICE}" ]; then
+  exit EX_ERROR
+fi
+
+# Ignore users with / in the username, since pf would interpret
+# the part after the / as a subanchor. Replacing it would mean
+# checking we do not end up with a different valid username.
+# Just don't use / in usernames please.
+case "${PAM_USER}" in
+  */*)
+    exit EX_OK
+    ;;
+esac
+
+# Definitions
+user="${PAM_USER}"
+host="${PAM_RHOST}"
+psvc="${PAM_SERVICE}"
+base='/usr/local'
+anc=`printf '%s' "pam_pf/${user}"`
+reg_anc=`printf '%s' "pam_pf/${user}/regular"`
+ext_anc=`printf '%s' "pam_pf/${user}/extended"`
+ext_rlf="${base}/etc/pam_pf/rules.d/${user}.rules"
+reg_rlf="${base}/etc/pam_pf/regular.rules"
+label="pam_pf:${user}"
+ssh_adf="${base}/etc/pam_pf/sshd_addr.conf"
+user_wl="${base}/etc/pam_pf/user_whitelist.conf"
+
+# Source pam_pf function library
+if [ ! -r "${base}/lib/pam_pf/pam_pf.subr" ]; then
+  exit EX_ERROR
+fi
+. "${base}/lib/pam_pf/pam_pf.subr"
+
+# Source pam_pf config file if it exists
+if [ -r "${base}/etc/pam_pf.conf" ]; then
+  . "${base}/etc/pam_pf.conf"
+fi
+# Set default values if there was no config file
+: ${uid:=0}
+: ${svc:=sshd}
+: ${wrong_svc_is_error:=yes}
+
+# Verify script runs as the expected uid
+if ! chk_uid "${uid}"; then
+  exit EX_ERROR
+fi
+
+# Verify script was called for the intended service
+if ! chk_svc "${svc}" "${psvc}"; then
+  case "${wrong_svc_is_error}" in
+    [Yy][Ee][Ss])
+      exit EX_ERROR
+      ;;
+    [Nn][Oo])
+      exit EX_OK
+      ;;
+    *)
+      exit EX_ERROR
+      ;;
+  esac
+fi
+
+# Verify script is not called from a terminal
+if ! chk_noterm; then
+  exit EX_ERROR
+fi
+
+# Main handling
+case ${PAM_SM_FUNC:-invalid} in
+  pam_sm_open_session)
+    # anchor for this user has already been created, just
+    # add the new source to the table
+    if chk_anchor "${anc}"; then
+      if ! add_src_to_table "${anc}" "${host}"; then
+        exit EX_ERROR
+      fi
+      exit EX_OK
+    fi
+
+    # anchor fot this user does not exist, verify file permissions
+    # on the whitelist and whether the user is on it
+    if ! chk_file_perm "${user_wl}"; then
+      exit EX_ERROR
+    fi
+
+    if ! chk_user_wl "${user}" "${user_wl}"; then
+      exit EX_OK
+    fi
+
+    # user is on the whitelist, we need to set up the anchor:
+    # 1. Verify file permissions
+    if ! chk_file_perm "${ssh_adf}"; then
+      exit EX_ERROR
+    fi
+
+    if ! chk_file_perm "${reg_rlf}"; then
+      exit EX_ERROR
+    fi
+
+    if [ -e "${ext_rlf}" ]; then
+      if ! chk_file_perm "${ext_rlf}"; then
+        exit EX_ERROR
+      fi
+    fi
+
+    # 2. Set up the embedded trampoline anchor
+    if ! load_rules "${anc}"; then
+      exit EX_ERROR
+    fi
+
+    # 3. Load the regular ruleset
+    if ! load_ext_rules "${reg_anc}" "${reg_rlf}" "${label}"; then
+      exit EX_ERROR
+    fi
+
+    # 4. Load the destination addresses for ssh connections
+    if ! load_ssh_tbl "${reg_anc}" "${ssh_adf}"; then
+      exit EX_ERROR
+    fi
+
+    # 5. Load the extended ruleset if it exists
+    if [ -e "${ext_rlf}" ]; then
+      if ! load_ext_rules "${ext_anc}" "${ext_rlf}" "${label}"; then
+        exit EX_ERROR
+      fi
+    fi
+
+    # 6. Add the user's source to the table, activating the tampoline
+    if ! add_src_to_table "${anc}" "${host}"; then
+      exit EX_ERROR
+    fi
+    ;;
+  pam_sm_close_session)
+    if ! chk_file_perm "${user_wl}"; then
+      exit EX_ERROR
+    fi
+
+    # user not being whitelisted is not an error
+    if ! chk_user_wl "${user}" "${user_wl}"; then
+      exit EX_OK
+    fi
+
+    # still being connected is not an error
+    if ! chk_last_session "${user}"; then
+      exit EX_OK
+    fi
+
+    # no abort on error from here on out, to clean up as
+    # much as possible
+    if [ -e "${ext_rlf}" ]; then
+      if ! chk_file_perm "${ext_rlf}"; then
+        # log
+      fi
+
+      if ! flush_anc "${ext_anc}"; then
+        # log
+      fi
+    fi
+
+    if ! flush_anc "${anc}"; then
+      # log
+    fi
+
+    if ! kill_states "${label}"; then
+      # log
+    fi
+    ;;
+  *)
+    ;;
+esac
+exit EX_OK
