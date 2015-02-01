@@ -1,22 +1,48 @@
 #!/bin/sh -
+# Copyright (c) 2015, Joerg Pernfuss <code+github@paranoidbsd.net>
+# All rights reserved
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted providing that the following conditions
+# are met:
+# 1. Redistributions of source code must retain the above copyright
+#    notice, this list of conditions and the following disclaimer.
+# 2. Redistributions in binary form must reproduce the above copyright
+#    notice, this list of conditions and the following disclaimer in the
+#    documentation and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE AUTHOR ``AS IS'' AND ANY EXPRESS OR
+# IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+# DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+# OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+# HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT,
+# STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+# IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+#
+# Where possible, the functions in this library default to
+# error (`return 1`) and only ok (`return 0`) for the specific
+# valid condition
 
 # check if we run with the specified uid
-check_uid () {
-  local _uid = $1
-
-  if [ -z "${_uid}" ]; then
+chk_uid () {
+  local _u=$1
+  if [ -z "${_u}" ]; then
     return 1
   fi
 
-  if [ `id -u` -ne ${_uid} ]; then
-    return 1
+  if [ `id -u` -eq ${_u} ]; then
+    return 0
   fi
-
-  return 0
+  return 1
 }
 
 # check if we are connected to a terminal
-check_terminal () {
+# this condition becomes unreadable as default-to-error
+chk_noterm () {
   if [ -t 0 -o -p /dev/stdin ]; then
     return 1
   fi
@@ -24,27 +50,27 @@ check_terminal () {
   return 0
 }
 
-# check in which PAM_SERVICE context we are called
-check_pam_service () {
-  local _svc = $1
-
-  if [ -z "${_svc}" -o -z "${PAM_SERVICE}" ]; then
+# check that we are called in the correct service context
+chk_svc () {
+  local _s=$1
+  local _p=$2
+  if [ -z "${_s}" -o -z "${_p}" ]; then
     return 1
   fi
 
-  if [ "${PAM_SERVICE}" != "${_svc}" ]; then
-    return 1
+  if [ "${_p}" = "${_s}" ]; then
+    return 0
   fi
-
-  return 0
+  return 1
 }
 
 # check file permissions. To pass, the supplied path must exist, be
 # a reguular file, not a symlink, be readable, belong to user root
 # and group wheel and have 0600 permissions
-check_file_permission () {
+# function becomes unreadable nested mess as default-to-error
+chk_file_perm () {
   local _f=$1
-  _f=`realpath "${_file}" 2>/dev/null`
+  _f=`realpath "${_f}" 2>/dev/null`
 
   if [ -z "${_f}" ]; then
     return 1
@@ -70,37 +96,7 @@ check_file_permission () {
     return 1
   fi
 
-  if [ `stat -f %Sp "${_p}"` != '-rw-------' ]; then
-    return 1
-  fi
-
-  return 0
-}
-
-# check file permissions for the file that contains
-# the sshd addresses to be loaded
-check_sshd_addr_file_permission () {
-  if ! check_file_permission "${sshd_addr_file}"; then
-    return 1
-  fi
-
-  return 0
-}
-
-# check file permissions for the file that lists the
-# whitelisted users
-check_user_whitelist_file_permission () {
-  if ! check_file_permission "${user_whitelist}"; then
-    return 1
-  fi
-
-  return 0
-}
-
-# check file permissions for the file that contains the
-# extended rules for that user
-check_extended_rules_file_permission () {
-  if ! check_file_permission "${extended_rules}"; then
+  if [ `stat -f %Sp "${_f}"` != '-rw-------' ]; then
     return 1
   fi
 
@@ -111,124 +107,116 @@ check_extended_rules_file_permission () {
 # be processed. To be valid, the username has to be in the
 # file on a line of its own with no additional whitespace
 # exactly once
-check_if_user_is_whitelisted () {
-  local _wl=$1
-  local _count _ec
-
-  _wl=`realpath "${_wl}" 2>/dev/null`
-  if [ -z "${_wl}" ]; then
+chk_user_wl () {
+  local _u=$1
+  local _w=$2
+  local _ct _ec
+  if [ -z "${_u}" -o "${_w}" ]; then
     return 1
   fi
 
-  if ! check_user_whitelist_file_permission; then
-    return 1
-  fi
-
-  if [ -z "${PAM_USER}" ]; then
-    return 1
-  fi
-
-  _count=`grep -c "^${PAM_USER}$" "${_wl}"`
+  _ct=`grep -c "^${_u}$" "${_w}"`
   _ec=$?
-  if [ ${_ec:-1} -ne 0 -o ${_count:-0} -ne 1 ]; then
-    return 1
+  if [ ${_ec:-1} -eq 0 -a ${_ct:-0} -eq 1 ]; then
+    return 0
   fi
-
-  return 0
+  return 1
 }
 
 # check if this was the last logged in session from $PAM_USER.
 # Only consider pts pseudo terminals for now
-check_last_user_session_closed () {
-  local _count
-
-  if [ -z "${PAM_USER}" ]; then
+chk_last_session () {
+  local _u=$1
+  local _ct
+  if [ -z "${_u}" ]; then
     return 1
   fi
 
-  _count=`w -h -n |\
+  _ct=`w -h -n |\
     grep -E '\bpts/[[:digit:]]{1,}\b' 2>/dev/null |\
-    grep -E -c "^${PAM_USER}"'\b'`
+    grep -E -c "^${_u}"'\b'`
 
-  # if $_count is unset, be defensive and consider all sessions
+  # if $_ct is unset, be defensive and consider all sessions
   # closed
-  if [ $_count:-0} -gt 0 ]; then
-    return 1
-  fi
-
-  return 0
-}
-
-# check if an configuration file for this user's extended anchor
-# exists
-check_extended_rules_file_of_user_exists () {
-  extended_rules=`realpath "${extended_rules}" 2>/dev/null`
-
-  if [ -z "${extended_rules}" ]; then
-    return 1
-  fi
-
-  return 0
-}
-
-# Kill states that match the label
-kill_labeled_states_of_user () {
-  pfctl -k 'label' -k "${label}"
-}
-
-### REGULAR ANCHOR FUNCTIONS
-
-# Test whether the regular anchor for this user exists
-# Sadly pfctl does an exit 0 if the anchor does not exist
-check_if_regular_anchor_for_user_exists () {
-  local _msg
-
-  _msg='pfctl: Anchor or Ruleset does not exist.'
-  if pfctl -a "${anchor}" -s Tables 2>&1 |\
-    grep -E "^${_msg}$" >/dev/null 2>&1; then
-    return 1
-  else
+  if [ $_ct:-0} -eq 0 ]; then
     return 0
   fi
+  return 1
 }
 
-# load the ruleset for this user into the anchor
-load_regular_anchor_ruleset () {
-
-  pfctl -q -a "${anchor}" -f - >/dev/null 2>&1 <<EOF
-table <pam_pf_user> persist counters
-table <pam_pf_ssh>  persist counters
-block in from <pam_pf_user> tag pam_pf
-pass in quick proto tcp from <pam_pf_user> to <pam_pf_ssh> \
-  port 22 label ${label} flags S/SA modulate state
-anchor extended
-EOF
-
-  if [ $? -ne 0 ]; then
+# Kill states that match a provided label
+kill_states () {
+  local _l=$1
+  if [ -z "${_l}" ]; then
     return 1
   fi
 
+  if pfctl -k 'label' -k "${_l}"; then
+    return 0
+  fi
+  return 1
+}
+
+# Test whether the regular anchor for this user exists
+# Sadly pfctl does an exit 0 if the anchor does not exist,
+# therefor not existing is an exit0 of grep on the error
+# message on pfctl's STDERR.
+chk_anchor () {
+  local _a=$1
+  local _msg
+  if [ -z "${_a}" ]; then
+    return 1
+  fi
+
+  _msg='pfctl: Anchor or Ruleset does not exist.'
+  if pfctl -a "${_a}" -s Tables 2>&1 |\
+    grep -E "^${_msg}$" >/dev/null 2>&1; then
+    return 1
+  fi
   return 0
+}
+
+# load the embedded ruleset for this user into the anchor
+load_rules () {
+  local _a=$1
+  if [ -z "${_a}" ]; then
+    return 1
+  fi
+
+  pfctl -q -a "${_a}" -f - >/dev/null 2>&1 <<EOF
+table <pam_pf_user> persist counters
+anchor regular from <pam_pf_user>
+anchor extended from <pam_pf_user>
+EOF
+
+  if [ $? -eq 0 ]; then
+    return 0
+  fi
+  return 1
 }
 
 # add ssh connection source to table inside anchor
-add_source_to_user_table () {
-  pfctl -q -a "${anchor}" -t 'pam_pf_user' \
-    -T add "${PAM_RHOST}"
-
-  if [ $? -ne 0 ]; then
+add_src_to_table () {
+  local _a=$1
+  local _h=$2
+  if [ -z "${_a}" -o -z "${_h}" ]; then
     return 1
   fi
 
-  return 0
+  if pfctl -q -a "${_a}" -t 'pam_pf_user' \
+    -T add "${_h}"; then
+    return 0
+  fi
+  return 1
 }
 
-# load the addresses listed in the $sshd_addr_file into
+# load the addresses listed in the $ssh_adf into
 # the pam_pf_ssh table inside the anchor
-load_entries_to_ssh_table () {
-  local _addr
-
-  if ! check_sshd_addr_file_permission; then
+load_ssh_tbl () {
+  local _a=$1
+  local _f=$2
+  local _addr _err
+  if [ -z "${_a}" -o -z "${_f}" ]; then
     return 1
   fi
 
@@ -236,26 +224,47 @@ load_entries_to_ssh_table () {
     # skip comments
     case $_addr in \#*) continue ;; esac
 
-    pfctl -q -a "${anchor}" -t 'pam_pf_ssh' \
+    pfctl -q -a "${_a}" -t 'pam_pf_ssh' \
       -T add "${_addr}"
-  done < "${sshd_addr_file}"
+    if [ $? -ne 0 ]; then
+      _err=1
+    fi
+  done < "${_f}"
 
-  return 0
+  if [ -z "${_err}" ]; then
+    return 0
+  fi
+  return 1
 }
 
-#
-flush_regular_anchor_of_user () {
-  pfctl -a "${anchor}" -F all >/dev/null 2>&1
+# load rules from a file into an anchor. Replace the string
+# %LABEL% with appropriate label prior to loading it.
+load_ext_rules () {
+  local _a=$1
+  local _r=$2
+  local _l=$3
+  if [ -z "${_a}" \
+    -o -z "${_r}" \
+    -o -z "${_l}" ]; then
+    return 1
+  fi
+
+  if sed -E -e 's/%LABEL%/'"${_l}"'/g' "${_r}" |\
+    pfctl -q -a "${_a}" -f - >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
 }
 
-### EXTENDED ANCHOR FUNCTIONS
+# flush everything within the specified anchor
+flush_anc () {
+  local _a=$1
+  if [ -z "${_a}" ]; then
+    return 1
+  fi
 
-#
-load_extended_anchor_ruleset () {
-  pfctl -a "${extended}" -f "${extended_rules}" >/dev/null 2>&1
-}
-
-#
-flush_extended_anchor_of_user () {
-  pfctl -a "${extended}" -F all >/dev/null 2>&1
+  if pfctl -a "${_a}" -F all >/dev/null 2>&1; then
+    return 0
+  fi
+  return 1
 }
