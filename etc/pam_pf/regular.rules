@@ -1,0 +1,4 @@
+table <pam_pf_ssh> persist counters
+block in tag pam_pf
+pass in quick proto tcp to <pam_pf_ssh> \
+  port 22 flags S/SA modulate state label %LABEL%

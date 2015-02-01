@@ -1,0 +1,2 @@
+pass in quick proto tcp to 127.0.0.1 port 80 flags S/SA \
+  modulate state label %LABEL%
